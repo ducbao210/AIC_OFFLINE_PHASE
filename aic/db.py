@@ -128,13 +128,42 @@ CREATE TABLE IF NOT EXISTS documents (
     title     TEXT,
     body      TEXT,
     objects   TEXT,
+    transcript TEXT,                     -- gộp từ bảng transcripts
+    captions   TEXT,                     -- gộp từ bảng captions
     UNIQUE (video_id, scope)
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
-    title, body, objects,
+    title, body, objects, transcript, captions,
     content='documents', content_rowid='id', tokenize='unicode61 remove_diacritics 2'
 );
+
+-- ASR transcript (Whisper)
+CREATE TABLE IF NOT EXISTS transcripts (
+    id            INTEGER PRIMARY KEY,
+    video_id      TEXT NOT NULL REFERENCES videos(video_id) ON DELETE CASCADE,
+    segment_index INTEGER NOT NULL,      -- thứ tự segment trong Whisper output
+    start_s       REAL NOT NULL,         -- thời điểm bắt đầu (giây)
+    end_s         REAL NOT NULL,         -- thời điểm kết thúc (giây)
+    text          TEXT NOT NULL,         -- nội dung transcript
+    model_name    TEXT,                  -- tên model Whisper đã dùng
+    language      TEXT,                  -- mã ngôn ngữ (vi)
+    UNIQUE (video_id, segment_index)
+);
+CREATE INDEX IF NOT EXISTS idx_transcripts_video ON transcripts(video_id);
+CREATE INDEX IF NOT EXISTS idx_transcripts_start ON transcripts(video_id, start_s);
+
+-- Visual captioning (BLIP-2 trên keyframe)
+CREATE TABLE IF NOT EXISTS captions (
+    id            INTEGER PRIMARY KEY,
+    keyframe_id   INTEGER NOT NULL REFERENCES keyframes(id) ON DELETE CASCADE,
+    video_id      TEXT NOT NULL,
+    frame_idx     INTEGER NOT NULL,
+    caption_text  TEXT NOT NULL,
+    model_name    TEXT,                  -- tên model captioning đã dùng
+    UNIQUE (keyframe_id)
+);
+CREATE INDEX IF NOT EXISTS idx_captions_video ON captions(video_id, frame_idx);
 
 -- Manifest: stage nào đã chạy xong cho video nào (resumable)
 CREATE TABLE IF NOT EXISTS ingest_manifest (
