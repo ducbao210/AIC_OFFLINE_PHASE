@@ -22,6 +22,8 @@ run 04_ingest_keyframes.py
 run 05_ingest_objects.py
 run 06_ingest_clip_features.py
 run 07_ingest_media_info.py
+run 11_ingest_asr.py
+run 12_ingest_captions.py
 run 08_build_fts.py
 run 09_verify.py
 run 10_export_index.py
