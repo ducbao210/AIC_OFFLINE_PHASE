@@ -30,7 +30,8 @@ def main() -> int:
 
     log.info("--- Thống kê ---")
     for table in ("videos", "keyframes", "objects", "clip_features",
-                  "media_info", "media_keywords", "documents"):
+                  "media_info", "media_keywords", "documents",
+                  "transcripts", "captions"):
         c = conn.execute(f"SELECT COUNT(*) AS c FROM {table}").fetchone()["c"]
         log.info("%-15s %d", table, c)
 
@@ -63,6 +64,15 @@ def main() -> int:
         "pts_time lệch >0.5s so với frame_idx/fps":
             "SELECT COUNT(*) AS c FROM keyframes WHERE fps > 0 "
             "AND ABS(pts_time - (frame_idx * 1.0 / fps)) > 0.5",
+        "video có transcript ASR":
+            "SELECT COUNT(*) AS c FROM videos v WHERE NOT EXISTS "
+            "(SELECT 1 FROM transcripts t WHERE t.video_id = v.video_id)",
+        "video có caption":
+            "SELECT COUNT(*) AS c FROM videos v WHERE NOT EXISTS "
+            "(SELECT 1 FROM captions c WHERE c.video_id = v.video_id)",
+        "caption mồ côi (không khớp keyframe)":
+            "SELECT COUNT(*) AS c FROM captions c WHERE NOT EXISTS "
+            "(SELECT 1 FROM keyframes k WHERE k.id = c.keyframe_id)",
     }
     for label, sql in checks.items():
         c = conn.execute(sql).fetchone()["c"]
