@@ -4,4 +4,3 @@ out/
 .venv/
 __pycache__/
 *.pyc
-.venv/
