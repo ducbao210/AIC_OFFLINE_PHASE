@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage 08 — Dựng `documents` (title + description + keywords + object entities) và FTS5.
+"""Stage 08 — Dựng `documents` (title + description + keywords + object entities + transcript + captions) và FTS5.
 
 FTS5 dùng tokenizer unicode61 remove_diacritics=2 → gõ 'nang luong tich cuc' vẫn khớp
 'năng lượng tích cực'.
@@ -55,6 +55,20 @@ def main() -> int:
             )
         ]
 
+        # --- transcript ---
+        transcript_rows = conn.execute(
+            "SELECT text FROM transcripts WHERE video_id = ? ORDER BY segment_index",
+            (video_id,),
+        ).fetchall()
+        transcript_text = " ".join(r["text"] for r in transcript_rows).strip() if transcript_rows else None
+
+        # --- captions ---
+        caption_rows = conn.execute(
+            "SELECT caption_text FROM captions WHERE video_id = ? ORDER BY frame_idx",
+            (video_id,),
+        ).fetchall()
+        captions_text = " ".join(r["caption_text"] for r in caption_rows).strip() if caption_rows else None
+
         title = nfc(meta["title"]) if meta else None
         body_parts = [
             nfc(meta["description"]) if meta else None,
@@ -63,21 +77,25 @@ def main() -> int:
         ]
         body = "\n".join(p for p in body_parts if p)
         objects_text = " ".join(entities)
-        if not (title or body or objects_text):
+        if not (title or body or objects_text or transcript_text or captions_text):
             continue
         if args.dry_run:
-            log.info("%s: title=%s objects=%d", video_id, title, len(entities))
+            log.info("%s: title=%s objects=%d transcript=%s captions=%s",
+                     video_id, title, len(entities),
+                     "yes" if transcript_text else "no",
+                     "yes" if captions_text else "no")
             continue
 
         with transaction(conn):
             conn.execute(
                 """
-                INSERT INTO documents (video_id, scope, title, body, objects)
-                VALUES (?, 'video', ?, ?, ?)
+                INSERT INTO documents (video_id, scope, title, body, objects, transcript, captions)
+                VALUES (?, 'video', ?, ?, ?, ?, ?)
                 ON CONFLICT(video_id, scope) DO UPDATE SET
-                    title=excluded.title, body=excluded.body, objects=excluded.objects
+                    title=excluded.title, body=excluded.body, objects=excluded.objects,
+                    transcript=excluded.transcript, captions=excluded.captions
                 """,
-                (video_id, title, body, objects_text),
+                (video_id, title, body, objects_text, transcript_text, captions_text),
             )
 
     with transaction(conn):
