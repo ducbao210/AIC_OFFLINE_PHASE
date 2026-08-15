@@ -12,16 +12,28 @@ from .config import CONFIG
 def base_parser(description: str) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
-        "--videos", nargs="*", default=None,
+        "--videos",
+        nargs="*",
+        default=None,
         help="Chỉ xử lý các video_id này (mặc định: tất cả).",
     )
     parser.add_argument(
-        "--groups", nargs="*", default=None,
+        "--groups",
+        nargs="*",
+        default=None,
         help="Chỉ xử lý các nhóm L21 L22 ...",
+    )
+    parser.add_argument(
+        "--shards",
+        nargs="*",
+        default=None,
+        help="Chỉ xử lý các shard, ví dụ L26_a hoặc L26_a L26_b.",
     )
     parser.add_argument("--limit", type=int, default=None, help="Giới hạn số video.")
     parser.add_argument("--workers", type=int, default=CONFIG.workers)
-    parser.add_argument("--force", action="store_true", help="Bỏ qua manifest, làm lại từ đầu.")
+    parser.add_argument(
+        "--force", action="store_true", help="Bỏ qua manifest, làm lại từ đầu."
+    )
     parser.add_argument("--dry-run", action="store_true", help="Chỉ in ra, không ghi.")
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
