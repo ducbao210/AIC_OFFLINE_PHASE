@@ -29,6 +29,7 @@ def load_caption_model(model_name: str, device: str):
         import torch
     except ImportError:
         import logging
+
         logging.getLogger("aic").error(
             "transformers chưa được cài đặt. Chạy: pip install transformers torch"
         )
@@ -45,7 +46,12 @@ def load_caption_model(model_name: str, device: str):
 
 
 def generate_caption(
-    model, processor, image_path: Path, device: str, max_new_tokens: int, prompt: str | None = None
+    model,
+    processor,
+    image_path: Path,
+    device: str,
+    max_new_tokens: int,
+    prompt: str | None = None,
 ) -> str | None:
     """Sinh caption cho 1 ảnh. Trả về text hoặc None nếu lỗi."""
     try:
@@ -61,39 +67,68 @@ def generate_caption(
             inputs = processor(image, return_tensors="pt").to(device)
 
         import torch
+
         with torch.no_grad():
             generated_ids = model.generate(**inputs, max_new_tokens=max_new_tokens)
         caption = processor.decode(generated_ids[0], skip_special_tokens=True).strip()
         return caption
     except Exception as exc:
         import logging
+
         logging.getLogger("aic").warning("caption failed for %s: %s", image_path, exc)
         return None
 
 
 def main() -> int:
     parser = base_parser(__doc__ or "")
-    parser.add_argument("--model", default=CONFIG.caption_model,
-                        help="Tên model BLIP-2 trên HuggingFace.")
-    parser.add_argument("--device", default=CONFIG.caption_device,
-                        choices=["cpu", "cuda"], help="Thiết bị chạy model.")
-    parser.add_argument("--max-tokens", type=int, default=CONFIG.caption_max_new_tokens,
-                        help="Số token tối đa cho caption.")
-    parser.add_argument("--prompt", default=None,
-                        help="Prompt prefix (vd: 'Question: What is in this image? Answer:').")
-    parser.add_argument("--sample", type=int, default=None,
-                        help="Chỉ caption N keyframe đầu tiên mỗi video (debug).")
-    parser.add_argument("--frames-per-video", type=int, default=None,
-                        help="Giới hạn số keyframe caption mỗi video (phân bố đều).")
+    parser.add_argument(
+        "--model",
+        default=CONFIG.caption_model,
+        help="Tên model BLIP-2 trên HuggingFace.",
+    )
+    parser.add_argument(
+        "--device",
+        default=CONFIG.caption_device,
+        choices=["cpu", "cuda"],
+        help="Thiết bị chạy model.",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=CONFIG.caption_max_new_tokens,
+        help="Số token tối đa cho caption.",
+    )
+    parser.add_argument(
+        "--prompt",
+        default=None,
+        help="Prompt prefix (vd: 'Question: What is in this image? Answer:').",
+    )
+    parser.add_argument(
+        "--sample",
+        type=int,
+        default=None,
+        help="Chỉ caption N keyframe đầu tiên mỗi video (debug).",
+    )
+    parser.add_argument(
+        "--frames-per-video",
+        type=int,
+        default=None,
+        help="Giới hạn số keyframe caption mỗi video (phân bố đều).",
+    )
     args = parser.parse_args()
     log = setup_logging(args.verbose)
 
-    kf_dirs = find_keyframe_dirs(CONFIG.data_root)
+    kf_dirs = find_keyframe_dirs(CONFIG.data_root, args.shards)
     conn = connect()
     init_schema(conn)
     targets = select_videos(args, list(kf_dirs), conn, STAGE)
-    log.info("captioning: %d/%d video (model=%s, device=%s)",
-             len(targets), len(kf_dirs), args.model, args.device)
+    log.info(
+        "captioning: %d/%d video (model=%s, device=%s)",
+        len(targets),
+        len(kf_dirs),
+        args.model,
+        args.device,
+    )
 
     if args.dry_run or not targets:
         conn.close()
@@ -109,7 +144,8 @@ def main() -> int:
     total_captions = 0
     for video_id in targets:
         images = sorted(
-            p for p in kf_dirs[video_id].iterdir()
+            p
+            for p in kf_dirs[video_id].iterdir()
             if p.suffix.lower() in {".jpg", ".jpeg", ".png"}
         )
         if not images:
@@ -134,11 +170,11 @@ def main() -> int:
         # Chọn ảnh cần caption
         if args.frames_per_video and len(images) > args.frames_per_video:
             step = max(1, len(images) // args.frames_per_video)
-            selected = images[::step][:args.frames_per_video]
+            selected = images[::step][: args.frames_per_video]
         else:
             selected = images
         if args.sample:
-            selected = selected[:args.sample]
+            selected = selected[: args.sample]
 
         rows: list[tuple] = []
         for pos, img_path in enumerate(selected):
@@ -176,8 +212,13 @@ def main() -> int:
                 """,
                 rows,
             )
-            mark_done(conn, STAGE, video_id, None,
-                      {"n_captions": len(rows), "model": args.model})
+            mark_done(
+                conn,
+                STAGE,
+                video_id,
+                None,
+                {"n_captions": len(rows), "model": args.model},
+            )
 
         total_captions += len(rows)
         log.info("[%s] %d captions", video_id, len(rows))

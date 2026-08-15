@@ -13,6 +13,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Sequence, TypeVar
 
+SHARD_RE = re.compile(
+    r"^(?:Keyframes|Videos|objects|media-info|clip-features)_(L\d{2}_[a-z])$"
+)
+
+
 VIDEO_ID_RE = re.compile(r"^L\d{2}_V\d{3}$")
 
 T = TypeVar("T")
@@ -29,6 +34,15 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
 
 
 LOG = logging.getLogger("aic")
+
+
+def dataset_shard(path: Path) -> str | None:
+    """Keyframes_L26_a -> L26_a."""
+    for part in path.parts:
+        match = SHARD_RE.match(part)
+        if match:
+            return match.group(1)
+    return None
 
 
 def is_video_id(name: str) -> bool:
@@ -77,15 +91,26 @@ def find_video_files(data_root: Path) -> dict[str, Path]:
     return found
 
 
-def find_keyframe_dirs(data_root: Path) -> dict[str, Path]:
-    """Keyframes_L*/keyframes/<video_id>/  ->  {video_id: dir}"""
+def find_keyframe_dirs(
+    data_root: Path,
+    shards: Sequence[str] | None = None,
+) -> dict[str, Path]:
     found: dict[str, Path] = {}
+    allowed = set(shards or [])
+
     for shard in iter_dirs(data_root, "Keyframes_L*"):
+        shard_id = dataset_shard(shard)
+
+        if allowed and shard_id not in allowed:
+            continue
+
         base = shard / "keyframes"
         base = base if base.is_dir() else shard
+
         for vdir in sorted(p for p in base.iterdir() if p.is_dir()):
             if is_video_id(vdir.name):
                 found.setdefault(vdir.name, vdir)
+
     return found
 
 
@@ -134,12 +159,18 @@ def has_ffprobe() -> bool:
 def ffprobe(path: Path) -> dict:
     """Trả về dict thông tin video; fps giữ dạng phân số (fps_num/fps_den)."""
     cmd = [
-        "ffprobe", "-v", "error",
-        "-select_streams", "v:0",
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
         "-show_entries",
         "stream=r_frame_rate,avg_frame_rate,nb_frames,width,height,codec_name,duration",
-        "-show_entries", "format=duration,size,bit_rate",
-        "-of", "json", str(path),
+        "-show_entries",
+        "format=duration,size,bit_rate",
+        "-of",
+        "json",
+        str(path),
     ]
     out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
     raw = json.loads(out)
@@ -162,9 +193,16 @@ def ffprobe(path: Path) -> dict:
 
     # audio stream?
     acmd = [
-        "ffprobe", "-v", "error", "-select_streams", "a:0",
-        "-show_entries", "stream=codec_name,sample_rate,channels",
-        "-of", "json", str(path),
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=codec_name,sample_rate,channels",
+        "-of",
+        "json",
+        str(path),
     ]
     astreams = json.loads(
         subprocess.run(acmd, capture_output=True, text=True, check=True).stdout
@@ -181,7 +219,9 @@ def ffprobe(path: Path) -> dict:
         "codec": stream.get("codec_name"),
         "size_bytes": int(fmt["size"]) if fmt.get("size") else path.stat().st_size,
         "audio_codec": audio.get("codec_name"),
-        "audio_sample_rate": int(audio["sample_rate"]) if audio.get("sample_rate") else None,
+        "audio_sample_rate": (
+            int(audio["sample_rate"]) if audio.get("sample_rate") else None
+        ),
         "audio_channels": int(audio["channels"]) if audio.get("channels") else None,
     }
 
