@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Build the second, independent FAISS index from text embeddings only.
 
-Input: text_embeddings.f32.npy + text_embedding_metadata.jsonl
+Input: text_embeddings.f32.npy + text_embedding_metadata.json
 Output: faiss_text.index + text_faiss_manifest.json
 No search or ranking logic is implemented here.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,10 +33,12 @@ def main() -> int:
     args = ap.parse_args()
 
     emb_path = args.src / "text_embeddings.f32.npy"
-    metadata_path = args.src / "text_embedding_metadata.jsonl"
+    metadata_path = args.src / "text_embedding_metadata.json"
     index_path = args.src / "faiss_text.index"
     if not emb_path.exists() or not metadata_path.exists():
-        raise SystemExit("Missing text_embeddings.f32.npy or text_embedding_metadata.jsonl")
+        raise SystemExit(
+            "Missing text_embeddings.f32.npy or text_embedding_metadata.json"
+        )
 
     matrix = np.load(emb_path, mmap_mode="r").astype("float32")
     if matrix.ndim != 2 or matrix.shape[0] == 0:
@@ -48,10 +51,12 @@ def main() -> int:
         index = faiss.IndexFlatIP(dim)
         index.add(np.asarray(matrix, dtype="float32"))
     else:
-        nlist = min(args.nlist, max(1, int(np.sqrt(len(matrix)))) )
+        nlist = min(args.nlist, max(1, int(np.sqrt(len(matrix)))))
         quantizer = faiss.IndexFlatIP(dim)
         index = faiss.IndexIVFFlat(quantizer, dim, nlist, faiss.METRIC_INNER_PRODUCT)
-        train_sample = np.asarray(matrix[: min(len(matrix), max(10_000, nlist * 40))], dtype="float32")
+        train_sample = np.asarray(
+            matrix[: min(len(matrix), max(10_000, nlist * 40))], dtype="float32"
+        )
         index.train(train_sample)
         index.add(np.asarray(matrix, dtype="float32"))
 
