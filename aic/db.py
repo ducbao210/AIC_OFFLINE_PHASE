@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -11,7 +12,6 @@ from typing import Iterator
 from .config import CONFIG
 
 SCHEMA = """
-PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 -- Inventory thô của mọi file phát hiện được trên đĩa (stage 01)
@@ -183,7 +183,13 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path, timeout=60)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode = WAL")
+    # WAL is unsafe for SQLite files stored on Google Drive/FUSE mounts because
+    # the -wal/-shm sidecars may be synchronized out of order. Keep DELETE as
+    # the portable default; local deployments may opt into WAL explicitly.
+    journal_mode = os.environ.get("AIC_SQLITE_JOURNAL_MODE", "DELETE").strip().upper()
+    if journal_mode not in {"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}:
+        raise ValueError(f"Unsupported AIC_SQLITE_JOURNAL_MODE: {journal_mode}")
+    conn.execute(f"PRAGMA journal_mode = {journal_mode}")
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA synchronous = NORMAL")
     return conn

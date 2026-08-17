@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 from pathlib import Path
 
@@ -11,9 +12,23 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", type=Path, required=True)
     ap.add_argument("--min-score", type=float, default=0.50)
+    ap.add_argument(
+        "--journal-mode",
+        choices=("DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"),
+        default=os.environ.get("AIC_SQLITE_JOURNAL_MODE", "DELETE").upper(),
+        help="SQLite journal mode; DELETE is safest on Google Drive/FUSE mounts.",
+    )
     args = ap.parse_args()
-    con = sqlite3.connect(args.db)
-    con.execute("PRAGMA journal_mode=WAL")
+    try:
+        con = sqlite3.connect(args.db, timeout=60)
+        con.execute(f"PRAGMA journal_mode={args.journal_mode}")
+        con.execute("PRAGMA foreign_keys=ON")
+    except sqlite3.DatabaseError as exc:
+        raise RuntimeError(
+            f"Cannot open SQLite database {args.db}. "
+            "If it is on Google Drive, restore/copy a healthy aic.sqlite backup "
+            "and remove stale aic.sqlite-wal/aic.sqlite-shm sidecars before rerunning Phase 8."
+        ) from exc
     con.executescript(
         """
         CREATE INDEX IF NOT EXISTS idx_objects_entity_score
