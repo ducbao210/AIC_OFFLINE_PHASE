@@ -45,7 +45,9 @@ def main() -> int:
     args = parser.parse_args()
     log = setup_logging(args.verbose)
 
-    kf_dirs = find_keyframe_dirs(CONFIG.data_root)
+    # Giống stage 12: chỉ quét các shard được chỉ định, nhưng vẫn giữ
+    # video_id nguyên bản (ví dụ L26_V001) để ghi chung vào DB/group L26.
+    kf_dirs = find_keyframe_dirs(CONFIG.data_root, args.shards)
     conn = connect()
     init_schema(conn)
     targets = select_videos(args, list(kf_dirs), conn, STAGE)
